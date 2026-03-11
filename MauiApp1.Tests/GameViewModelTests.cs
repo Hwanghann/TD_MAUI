@@ -1,7 +1,7 @@
 ﻿using MauiApp1.Models;
 using MauiApp1.Services;
-using MauiApp1.ViewModels;
 using MauiApp1.Tests.Fakes;
+using MauiApp1.ViewModels;
 
 namespace MauiApp1.Tests;
 
@@ -12,8 +12,9 @@ public class GameViewModelTests
         var bot = new FakeBotService(botMove);
         var history = new FakeHistoryService();
         var engine = new GameEngine();
+        var persistence = new FakePersistenceService();
 
-        return new GameViewModel(bot, history, engine);
+        return new GameViewModel(bot, history, engine, persistence);
     }
 
     [Fact]
@@ -56,5 +57,26 @@ public class GameViewModelTests
         });
 
         Assert.Equal("Tour: Humain (X)", vm.Status);
+    }
+
+    [Fact]
+    public async Task Human_Win_Should_Add_History_Item()
+    {
+        var bot = new FakeBotService(8);
+        var history = new FakeHistoryService();
+        var engine = new GameEngine();
+        var persistence = new FakePersistenceService();
+
+        var vm = new GameViewModel(bot, history, engine, persistence);
+
+        vm.Cells[0].Value = "X";
+        vm.Cells[1].Value = "X";
+        vm.Cells[3].Value = "O";
+        vm.Cells[4].Value = "O";
+
+        await vm.PlayCommand.ExecuteAsync(vm.Cells[2]);
+
+        Assert.Single(history.Items);
+        Assert.Equal(GameResult.Victory, history.Items[0].Result);
     }
 }
