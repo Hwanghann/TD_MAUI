@@ -1,0 +1,43 @@
+<ContentView
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    x:Class="MauiApp1.Views.Components.GameBoardView">
+
+    <VerticalStackLayout Spacing="12">
+
+        <CollectionView
+            x:Name="BoardView"
+            ItemsSource="{Binding Cells}"
+            HeightRequest="300"
+            WidthRequest="300"
+            HorizontalOptions="Center">
+
+            <CollectionView.ItemsLayout>
+                <GridItemsLayout Orientation="Vertical" Span="3" />
+            </CollectionView.ItemsLayout>
+
+            <CollectionView.ItemTemplate>
+                <DataTemplate>
+                    <Button
+                        Text="{Binding Value}"
+                        FontSize="40"
+                        TextColor="White"
+                        HeightRequest="100"
+                        WidthRequest="100"
+                        BackgroundColor="{Binding BackgroundColor}"
+                        IsEnabled="{Binding IsEnabled}"
+                        Command="{Binding BindingContext.PlayCommand, Source={x:Reference BoardView}}"
+                        CommandParameter="{Binding .}" />
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+
+        <Button
+            Text="Recommencer"
+            Command="{Binding ResetGameCommand}"
+            WidthRequest="160"
+            HeightRequest="45"
+            HorizontalOptions="Center" />
+
+    </VerticalStackLayout>
+</ContentView>

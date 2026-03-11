@@ -1,6 +1,6 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
-using MauiApp1.Models;
 using Microsoft.Maui.Graphics;
+using MauiApp1.Models;
 
 namespace MauiApp1.ViewModels;
 
@@ -11,6 +11,7 @@ public partial class CellViewModel : ObservableObject
     public CellViewModel(GameCell cell)
     {
         Cell = cell;
+        backgroundColor = Color.FromArgb("#512BD4"); // violet par défaut
     }
 
     public string Value
@@ -23,17 +24,9 @@ public partial class CellViewModel : ObservableObject
         }
     }
 
-    Color backgroundColor = Colors.MediumPurple;
-    public Color BackgroundColor
-    {
-        get => backgroundColor;
-        set => SetProperty(ref backgroundColor, value);
-    }
+    [ObservableProperty]
+    private bool isEnabled = true;
 
-    bool isEnabled = true;
-    public bool IsEnabled
-    {
-        get => isEnabled;
-        set => SetProperty(ref isEnabled, value);
-    }
+    [ObservableProperty]
+    private Color backgroundColor;
 }

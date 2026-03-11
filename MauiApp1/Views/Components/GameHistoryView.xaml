@@ -1,0 +1,43 @@
+<ContentView
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    x:Class="MauiApp1.Views.Components.GameHistoryView">
+
+    <VerticalStackLayout Spacing="10">
+
+        <Label
+            Text="Historique des parties"
+            FontAttributes="Bold"
+            FontSize="20" />
+
+        <CollectionView ItemsSource="{Binding History}">
+            <CollectionView.ItemTemplate>
+                <DataTemplate>
+                    <Frame
+                        Margin="0,4"
+                        Padding="10"
+                        CornerRadius="10"
+                        BorderColor="LightGray">
+
+                        <VerticalStackLayout Spacing="4">
+                            <Label
+                                Text="{Binding WinnerLabel}"
+                                FontAttributes="Bold"
+                                FontSize="16" />
+
+                            <Label
+                                Text="{Binding ScoreLabel, StringFormat='Score global : {0}'}"
+                                FontSize="14" />
+
+                            <Label
+                                Text="{Binding DateLabel, StringFormat='Jouée le : {0}'}"
+                                FontSize="13" />
+                        </VerticalStackLayout>
+
+                    </Frame>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+
+    </VerticalStackLayout>
+</ContentView>

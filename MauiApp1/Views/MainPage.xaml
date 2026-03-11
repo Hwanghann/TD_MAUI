@@ -1,52 +1,18 @@
 ﻿<ContentPage
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-    xmlns:viewmodel="clr-namespace:MauiApp1.ViewModels"
+    xmlns:components="clr-namespace:MauiApp1.Views.Components"
     x:Class="MauiApp1.Views.MainPage">
 
-    <ContentPage.BindingContext>
-        <viewmodel:GameViewModel/>
-    </ContentPage.BindingContext>
+    <ScrollView>
+        <VerticalStackLayout Padding="20" Spacing="16">
 
-    <VerticalStackLayout Padding="30" Spacing="20">
+            <components:GameHeaderView />
 
-        <Label
-            Text="{Binding Status}"
-            FontSize="28"
-            HorizontalOptions="Center"/>
+            <components:GameBoardView />
 
-        <CollectionView
-            x:Name="BoardView"
-            ItemsSource="{Binding Cells}"
-            HeightRequest="300"
-            WidthRequest="300">
+            <components:GameHistoryView />
 
-            <CollectionView.ItemsLayout>
-                <GridItemsLayout Orientation="Vertical" Span="3"/>
-            </CollectionView.ItemsLayout>
-
-            <CollectionView.ItemTemplate>
-                <DataTemplate>
-
-                    <Button
-                        Text="{Binding Value}"
-                        FontSize="40"
-                        HeightRequest="100"
-                        WidthRequest="100"
-                        BackgroundColor="{Binding BackgroundColor}"
-                        IsEnabled="{Binding IsEnabled}"
-                        Command="{Binding BindingContext.PlayCommand, Source={x:Reference BoardView}}"
-                        CommandParameter="{Binding .}" />               
-
-                </DataTemplate>
-            </CollectionView.ItemTemplate>
-
-        </CollectionView>
-
-        <Button
-            Text="Recommencer"
-            Command="{Binding ResetGameCommand}" />
-
-    </VerticalStackLayout>
-
+        </VerticalStackLayout>
+    </ScrollView>
 </ContentPage>

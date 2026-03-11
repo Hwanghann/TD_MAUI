@@ -1,107 +1,205 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Maui.Graphics;
 using System.Collections.ObjectModel;
 using MauiApp1.Models;
+using MauiApp1.Services;
 
 namespace MauiApp1.ViewModels;
 
 public partial class GameViewModel : ObservableObject
 {
+    private readonly IBotService bot;
+    private readonly IGameHistoryService history;
+    private readonly IGameEngine engine;
+    private readonly GameState state = new();
+
     public ObservableCollection<CellViewModel> Cells { get; } = new();
+    public ObservableCollection<GameHistoryItem> History => history.Items;
 
     [ObservableProperty]
-    string status = "Tour du joueur X";
+    private string status = "Tour: Humain (X)";
 
-    string currentPlayer = "X";
-    bool gameOver = false;
+    [ObservableProperty]
+    private bool isBusy;
 
-    int[,] wins =
-{
-    {0,1,2},{3,4,5},{6,7,8},
-    {0,3,6},{1,4,7},{2,5,8},
-    {0,4,8},{2,4,6}
-};
+    private const string Human = "X";
+    private const string Bot = "O";
+    private static readonly Color DefaultCellColor = Color.FromArgb("#512BD4");
+    private static readonly Color WinCellColor = Color.FromArgb("#236109");
+    private static readonly Color LoseBoardColor = Color.FromArgb("#3A3A3A");
 
-    public GameViewModel()
+    public GameViewModel(
+        IBotService bot,
+        IGameHistoryService history,
+        IGameEngine engine)
     {
+        this.bot = bot;
+        this.history = history;
+        this.engine = engine;
+
         ResetGame();
     }
 
     [RelayCommand]
-    void Play(CellViewModel cell)
+    private async Task Play(CellViewModel cell)
     {
-        if (gameOver || cell.Value != "")
+        if (!CanPlay(cell))
             return;
 
-        cell.Value = currentPlayer;
+        ApplyMove(cell, Human);
 
-        if (CheckWinner())
-        {
-            Status = $"Le joueur {currentPlayer} gagne !";
-            gameOver = true;
+        if (TryEndGame(Human))
             return;
-        }
 
-        if (Cells.All(c => c.Value != ""))
-        {
-            Status = "Match nul";
-
-            foreach (var c in Cells)
-            {
-                c.BackgroundColor = Colors.LightGray;
-                c.IsEnabled = false;
-            }
-
-            return;
-        }
-
-        currentPlayer = currentPlayer == "X" ? "O" : "X";
-        Status = $"Tour du joueur {currentPlayer}";
+        await PlayBotTurn();
     }
 
     [RelayCommand]
-    void ResetGame()
+    private void ResetGame()
     {
+        state.IsGameOver = false;
+        state.CurrentPlayer = Human;
+        IsBusy = false;
+        Status = "Tour: Humain (X)";
+
         Cells.Clear();
 
         for (int i = 0; i < 9; i++)
         {
-            Cells.Add(new CellViewModel(new GameCell()));
-        }
+            var cell = new CellViewModel(new GameCell())
+            {
+                IsEnabled = true,
+                BackgroundColor = DefaultCellColor,
+                Value = ""
+            };
 
-        currentPlayer = "X";
-        Status = "Tour du joueur X";
-        gameOver = false;
+            Cells.Add(cell);
+        }
     }
 
-    bool CheckWinner()
+    private bool CanPlay(CellViewModel cell)
     {
-        string[] board = Cells.Select(c => c.Value).ToArray();
+        return !state.IsGameOver
+            && !IsBusy
+            && cell.IsEnabled
+            && cell.Value == "";
+    }
 
-        for (int i = 0; i < wins.GetLength(0); i++)
+    private void ApplyMove(CellViewModel cell, string symbol)
+    {
+        cell.Value = symbol;
+    }
+
+    private async Task PlayBotTurn()
+    {
+        IsBusy = true;
+        Status = "Tour: Bot (O)";
+
+        await Task.Delay(250);
+
+        var board = GetBoard();
+        int move = bot.ChooseMove(board, Bot, Human);
+
+        if (move >= 0 && move < Cells.Count && Cells[move].Value == "")
         {
-            int a = wins[i, 0];
-            int b = wins[i, 1];
-            int c = wins[i, 2];
+            ApplyMove(Cells[move], Bot);
+        }
 
-            if (board[a] != "" &&
-                board[a] == board[b] &&
-                board[b] == board[c])
-            {
-                Cells[a].BackgroundColor = Colors.GreenYellow;
-                Cells[b].BackgroundColor = Colors.GreenYellow;
-                Cells[c].BackgroundColor = Colors.GreenYellow;
+        IsBusy = false;
 
-                DisableBoard();
+        if (TryEndGame(Bot))
+            return;
 
-                return true;
-            }
+        Status = "Tour: Humain (X)";
+    }
+
+    private bool TryEndGame(string lastPlayer)
+    {
+        var board = GetBoard();
+
+        if (engine.TryFindWinningLine(board, out var line))
+        {
+            HandleVictory(lastPlayer, line);
+            return true;
+        }
+
+        if (engine.IsDraw(board))
+        {
+            HandleDraw();
+            return true;
         }
 
         return false;
     }
 
-    void DisableBoard()
+    private void HandleVictory(string winner, int[] line)
+    {
+        state.IsGameOver = true;
+        HighlightWinner(line);
+        DisableAllCells();
+
+        if (winner == Human)
+        {
+            state.HumanScore++;
+            Status = "✅ Victoire de l'humain";
+            AddHistory(GameResult.Victory);
+        }
+        else
+        {
+            state.BotScore++;
+            Status = "❌ Victoire du bot";
+            AddHistory(GameResult.Defeat);
+        }
+    }
+
+    private void HandleDraw()
+    {
+        state.IsGameOver = true;
+        GrayOutDraw();
+        DisableAllCells();
+        Status = "🤝 Match nul";
+        AddHistory(GameResult.Draw);
+    }
+
+    private void AddHistory(GameResult result)
+    {
+        history.Add(new GameHistoryItem
+        {
+            Date = DateTime.Now,
+            HumanScore = state.HumanScore,
+            BotScore = state.BotScore,
+            Result = result
+        });
+    }
+
+    private string[] GetBoard()
+    {
+        return engine.GetBoard(Cells.Select(c => c.Value));
+    }
+
+    private void HighlightWinner(int[] line)
+    {
+        foreach (var cell in Cells)
+        {
+            cell.BackgroundColor = LoseBoardColor;
+        }
+
+        foreach (var index in line)
+        {
+            Cells[index].BackgroundColor = WinCellColor;
+        }
+    }
+
+    private void GrayOutDraw()
+    {
+        foreach (var cell in Cells)
+        {
+            cell.BackgroundColor = Colors.LightGray;
+        }
+    }
+
+    private void DisableAllCells()
     {
         foreach (var cell in Cells)
         {
