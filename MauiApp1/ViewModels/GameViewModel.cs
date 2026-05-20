@@ -1,127 +1,136 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Microsoft.Maui.Graphics;
-using System.Collections.ObjectModel;
 using MauiApp1.Models;
 using MauiApp1.Services;
+using Microsoft.Maui.Graphics;
+using System.Collections.ObjectModel;
 
 namespace MauiApp1.ViewModels;
 
 public partial class GameViewModel : ObservableObject
 {
-    private readonly IBotService bot;
+    private readonly IApiGameService apiGameService;
     private readonly IGameHistoryService history;
-    private readonly IGameEngine engine;
-    private readonly IGamePersistenceService persistence;
 
-    public ObservableCollection<CellViewModel> Cells { get; } = new();
-    public ObservableCollection<GameHistoryItem> History => history.Items;
-
-    [ObservableProperty]
-    private string status = "Tour: Humain (X)";
-
-    [ObservableProperty]
-    private bool isBusy;
-
-    private const string Human = "X";
-    private const string Bot = "O";
-
-    private bool gameOver = false;
+    private Guid currentGameId;
     private int humanScore = 0;
     private int botScore = 0;
 
     private static readonly Color DefaultCellColor = Color.FromArgb("#512BD4");
-    private static readonly Color WinCellColor = Color.FromArgb("#236109");
-    private static readonly Color LoseBoardColor = Color.FromArgb("#3A3A3A");
+    private static readonly Color DisabledCellColor = Color.FromArgb("#3A3A3A");
+
+    public ObservableCollection<CellViewModel> Cells { get; } = new();
+
+    public ObservableCollection<GameHistoryItem> History => history.Items;
+
+    [ObservableProperty]
+    private string status = "Chargement...";
+
+    [ObservableProperty]
+    private bool isBusy;
 
     public GameViewModel(
-        IBotService bot,
-        IGameHistoryService history,
-        IGameEngine engine,
-        IGamePersistenceService persistence)
+        IApiGameService apiGameService,
+        IGameHistoryService history)
     {
-        this.bot = bot;
+        this.apiGameService = apiGameService;
         this.history = history;
-        this.engine = engine;
-        this.persistence = persistence;
 
-        LoadGame();
+        _ = StartNewGameAsync();
     }
 
     [RelayCommand]
     private async Task Play(CellViewModel cell)
     {
-        if (gameOver || IsBusy || !cell.IsEnabled || cell.Value != "")
+        if (IsBusy || cell == null || !cell.IsEnabled || cell.Value != "")
             return;
 
-        ApplyMove(cell, Human);
+        int position = Cells.IndexOf(cell);
 
-        if (TryEndGameFromBoard(Human))
+        if (position < 0 || currentGameId == Guid.Empty)
             return;
 
-        IsBusy = true;
-        Status = "Tour: Bot (O)";
-        SaveGame();
-
-        await Task.Delay(250);
-
-        var board = GetBoard();
-        int move = bot.ChooseMove(board, Bot, Human);
-
-        if (move >= 0 && move < Cells.Count && Cells[move].Value == "")
+        try
         {
-            ApplyMove(Cells[move], Bot);
+            IsBusy = true;
+            Status = "Le bot joue...";
+
+            var game = await apiGameService.PlayMoveAsync(currentGameId, position);
+
+            ApplyGameToBoard(game);
+            UpdateStatus(game);
         }
-
-        IsBusy = false;
-
-        if (TryEndGameFromBoard(Bot))
-            return;
-
-        Status = "Tour: Humain (X)";
-        SaveGame();
+        catch (Exception ex)
+        {
+            Status = $"Erreur API : {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     [RelayCommand]
-    private void ResetGame()
+    private async Task ResetGame()
     {
-        gameOver = false;
-        IsBusy = false;
-        Status = "Tour: Humain (X)";
+        await StartNewGameAsync();
+    }
 
+    private async Task StartNewGameAsync()
+    {
+        try
+        {
+            IsBusy = true;
+            Status = "Création de la partie...";
+
+            var game = await apiGameService.CreateGameAsync();
+
+            currentGameId = game.Id;
+
+            ApplyGameToBoard(game);
+            UpdateStatus(game);
+        }
+        catch (Exception ex)
+        {
+            Status = $"Erreur API : {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private void ApplyGameToBoard(ApiGame game)
+    {
         Cells.Clear();
 
         for (int i = 0; i < 9; i++)
         {
+            string value = "";
+
+            if (game.Board != null && i < game.Board.Count)
+            {
+                value = game.Board[i] == " " ? "" : game.Board[i];
+            }
+
             Cells.Add(new CellViewModel(new GameCell())
             {
-                Value = "",
-                IsEnabled = true,
-                BackgroundColor = DefaultCellColor
+                Value = value,
+                IsEnabled = game.Status == 0 && value == "",
+                BackgroundColor = game.Status == 0 ? DefaultCellColor : DisabledCellColor
             });
         }
-
-        SaveGame();
     }
 
-    private void ApplyMove(CellViewModel cell, string symbol)
+    private void UpdateStatus(ApiGame game)
     {
-        cell.Value = symbol;
-        SaveGame();
-    }
-
-    private bool TryEndGameFromBoard(string lastPlayer)
-    {
-        var board = GetBoard();
-
-        if (engine.TryFindWinningLine(board, out var line))
+        switch (game.Status)
         {
-            gameOver = true;
-            HighlightWinner(line);
-            DisableAllCells();
+            case 0:
+                Status = "Tour: Humain (X)";
+                break;
 
-            if (lastPlayer == Human)
-            {
+            case 1:
                 humanScore++;
                 Status = "✅ Victoire de l'humain";
                 history.Add(new GameHistoryItem
@@ -131,9 +140,9 @@ public partial class GameViewModel : ObservableObject
                     BotScore = botScore,
                     Result = GameResult.Victory
                 });
-            }
-            else
-            {
+                break;
+
+            case 2:
                 botScore++;
                 Status = "❌ Victoire du bot";
                 history.Add(new GameHistoryItem
@@ -143,132 +152,18 @@ public partial class GameViewModel : ObservableObject
                     BotScore = botScore,
                     Result = GameResult.Defeat
                 });
-            }
+                break;
 
-            SaveGame();
-            return true;
-        }
-
-        if (engine.IsDraw(board))
-        {
-            gameOver = true;
-            GrayOutDraw();
-            DisableAllCells();
-            Status = "🤝 Match nul";
-
-            history.Add(new GameHistoryItem
-            {
-                Date = DateTime.Now,
-                HumanScore = humanScore,
-                BotScore = botScore,
-                Result = GameResult.Draw
-            });
-
-            SaveGame();
-            return true;
-        }
-
-        return false;
-    }
-
-    private string[] GetBoard()
-    {
-        return Cells.Select(c => c.Value).ToArray();
-    }
-
-    private void HighlightWinner(int[] line)
-    {
-        foreach (var cell in Cells)
-        {
-            cell.BackgroundColor = LoseBoardColor;
-        }
-
-        foreach (var index in line)
-        {
-            Cells[index].BackgroundColor = WinCellColor;
-        }
-    }
-
-    private void GrayOutDraw()
-    {
-        foreach (var cell in Cells)
-        {
-            cell.BackgroundColor = Colors.LightGray;
-        }
-    }
-
-    private void DisableAllCells()
-    {
-        foreach (var cell in Cells)
-        {
-            cell.IsEnabled = false;
-        }
-    }
-
-    private void SaveGame()
-    {
-        var data = new GameSaveData
-        {
-            Board = Cells.Select(c => c.Value).ToList(),
-            History = history.Items.ToList(),
-            Status = Status,
-            IsGameOver = gameOver,
-            HumanScore = humanScore,
-            BotScore = botScore
-        };
-
-        persistence.Save(data);
-    }
-
-    private void LoadGame()
-    {
-        var data = persistence.Load();
-
-        if (data == null)
-        {
-            ResetGame();
-            return;
-        }
-
-        Cells.Clear();
-
-        foreach (var value in data.Board)
-        {
-            Cells.Add(new CellViewModel(new GameCell())
-            {
-                Value = value,
-                IsEnabled = !data.IsGameOver && value == "",
-                BackgroundColor = DefaultCellColor
-            });
-        }
-
-        while (Cells.Count < 9)
-        {
-            Cells.Add(new CellViewModel(new GameCell())
-            {
-                Value = "",
-                IsEnabled = !data.IsGameOver,
-                BackgroundColor = DefaultCellColor
-            });
-        }
-
-        Status = data.Status;
-        gameOver = data.IsGameOver;
-        humanScore = data.HumanScore;
-        botScore = data.BotScore;
-
-        history.Items.Clear();
-        foreach (var item in data.History)
-        {
-            history.Items.Add(item);
-        }
-
-        if (gameOver)
-        {
-            foreach (var cell in Cells)
-            {
-                cell.IsEnabled = false;
-            }
+            case 3:
+                Status = "Match nul";
+                history.Add(new GameHistoryItem
+                {
+                    Date = DateTime.Now,
+                    HumanScore = humanScore,
+                    BotScore = botScore,
+                    Result = GameResult.Draw
+                });
+                break;
         }
     }
 }

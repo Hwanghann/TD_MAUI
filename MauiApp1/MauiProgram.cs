@@ -19,8 +19,10 @@ public static class MauiProgram
                 fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
             });
 
-        builder.Services.AddSingleton<IGameHistoryService, FakeGameHistoryService>();
+        builder.Services.AddSingleton<IApiGameService, ApiGameService>();
+
         builder.Services.AddSingleton<IBotService, RandomBotService>();
+        builder.Services.AddSingleton<IGameHistoryService, FakeGameHistoryService>();
         builder.Services.AddSingleton<IGameEngine, GameEngine>();
         builder.Services.AddSingleton<IGamePersistenceService, GamePersistenceService>();
 
